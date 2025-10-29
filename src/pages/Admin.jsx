@@ -1,21 +1,24 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { useNavigate } from 'react-router-dom'; // Importar useNavigate
 import axios from 'axios';
 import { toast } from 'react-toastify';
-import { API_URL, ORDER_STATUS } from '../config';
+import { API_URL, ORDER_STATUS, CATEGORIES } from '../config'; // Importar CATEGORIES
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import './Admin.css';
 
 const Admin = () => {
-  const { user, logout } = useApp();
+  const { user, logout, loading: contextLoading } = useApp(); // Usar loading del contexto
+  const navigate = useNavigate(); // Hook para navegación
   const [activeTab, setActiveTab] = useState('dashboard');
   const [orders, setOrders] = useState([]);
   const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); // Loading local para carga de datos del panel
   const [showProductModal, setShowProductModal] = useState(false);
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [editingProduct, setEditingProduct] = useState(null);
+
   const [productForm, setProductForm] = useState({
     name: '',
     description: '',
@@ -24,6 +27,7 @@ const Admin = () => {
     stock: '',
     image: ''
   });
+
   const [stats, setStats] = useState({
     totalOrders: 0,
     pendingOrders: 0,
@@ -33,19 +37,58 @@ const Admin = () => {
     lowStock: 0
   });
 
+  // Hook de efecto para seguridad y carga de datos
   useEffect(() => {
-    if (!user || !user.isAdmin) {
-      window.location.href = '/';
-      return;
+    // Solo proceder si el contexto ha terminado de cargar
+    if (!contextLoading) {
+      if (!user || !user.isAdmin) {
+        toast.error('Acceso denegado. Debes ser administrador.');
+        navigate('/');
+      } else {
+        // Si es admin, cargar datos iniciales
+        loadData();
+      }
     }
-    loadData();
-  }, [user]);
+  }, [user, contextLoading, navigate]); // Depender de 'user' y 'contextLoading'
 
   const loadData = async () => {
-    await Promise.all([loadOrders(), loadProducts()]);
-    setLoading(false);
+    setLoading(true); // Iniciar carga local
+    try {
+      // Cargar pedidos y productos en paralelo
+      const [ordersRes, productsRes] = await Promise.all([
+        axios.get(`${API_URL}/get_orders.php`, { withCredentials: true }),
+        axios.get(`${API_URL}/get_products.php`)
+      ]);
+
+      let ordersData = [];
+      let productsData = [];
+
+      if (ordersRes.data.success) {
+        ordersData = ordersRes.data.orders;
+        setOrders(ordersData);
+      } else {
+        toast.error('Error al cargar pedidos: ' + (ordersRes.data.message || 'Error desconocido'));
+      }
+
+      if (productsRes.data.success) {
+        productsData = productsRes.data.products;
+        setProducts(productsData);
+      } else {
+        toast.error('Error al cargar productos: ' + (productsRes.data.message || 'Error desconocido'));
+      }
+
+      // Calcular estadísticas con los datos frescos
+      calculateStats(ordersData, productsData);
+
+    } catch (error) {
+      console.error('Error loading data:', error);
+      toast.error('Error al cargar datos del panel. Revisa la consola.');
+    } finally {
+      setLoading(false); // Finalizar carga local
+    }
   };
 
+  // Función para recargar solo los pedidos
   const loadOrders = async () => {
     try {
       const response = await axios.get(`${API_URL}/get_orders.php`, {
@@ -53,34 +96,41 @@ const Admin = () => {
       });
       if (response.data.success) {
         setOrders(response.data.orders);
-        calculateStats(response.data.orders, products);
+        calculateStats(response.data.orders, products); // Recalcular con productos existentes
+      } else {
+         toast.error('Error al recargar pedidos: ' + (response.data.message || 'Error desconocido'));
       }
     } catch (error) {
       console.error('Error loading orders:', error);
-      toast.error('Error al cargar pedidos');
+      toast.error('Error al recargar pedidos. Revisa la consola.');
     }
   };
 
+  // Función para recargar solo los productos
   const loadProducts = async () => {
     try {
       const response = await axios.get(`${API_URL}/get_products.php`);
       if (response.data.success) {
         setProducts(response.data.products);
-        calculateStats(orders, response.data.products);
+        calculateStats(orders, response.data.products); // Recalcular con pedidos existentes
+      } else {
+        toast.error('Error al recargar productos: ' + (response.data.message || 'Error desconocido'));
       }
     } catch (error) {
       console.error('Error loading products:', error);
-      toast.error('Error al cargar productos');
+      toast.error('Error al recargar productos. Revisa la consola.');
     }
   };
 
   const calculateStats = (ordersData, productsData) => {
+    if (!Array.isArray(ordersData) || !Array.isArray(productsData)) return;
+
     const totalOrders = ordersData.length;
     const pendingOrders = ordersData.filter(o => o.status === 'pending' || o.status === 'processing').length;
     const completedOrders = ordersData.filter(o => o.status === 'completed').length;
-    const totalRevenue = ordersData.reduce((sum, o) => sum + parseFloat(o.total), 0);
+    const totalRevenue = ordersData.reduce((sum, o) => sum + parseFloat(o.total || 0), 0);
     const lowStock = productsData.filter(p => p.stock < 10).length;
-    
+
     setStats({
       totalOrders,
       pendingOrders,
@@ -91,67 +141,161 @@ const Admin = () => {
     });
   };
 
+  // --- Gráficos (Datos REALES basados en los pedidos cargados) ---
+
   const getChartData = () => {
-    const last7Days = [...Array(7)].map((_, i) => {
-      const date = new Date();
-      date.setDate(date.getDate() - (6 - i));
-      return date.toLocaleDateString('es-PE', { day: '2-digit', month: 'short' });
+    // Objeto para almacenar pedidos e ingresos por día (últimos 7 días)
+    const dailyData = {};
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Establecer a medianoche para comparar fechas
+
+    // Inicializar los últimos 7 días
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(today.getDate() - i);
+      const dayKey = date.toLocaleDateString('es-PE', { day: '2-digit', month: 'short' });
+      dailyData[dayKey] = { name: dayKey, pedidos: 0, ingresos: 0 };
+    }
+
+    // Procesar pedidos
+    orders.forEach(order => {
+      try {
+        const orderDate = new Date(order.created_at);
+        if (isNaN(orderDate)) return; // Saltar si la fecha no es válida
+        orderDate.setHours(0, 0, 0, 0);
+
+        // Calcular diferencia en milisegundos y convertir a días
+        const diffTime = today.getTime() - orderDate.getTime();
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)); // Usar floor para días completos pasados
+
+        // Si el pedido está dentro de los últimos 7 días (0 a 6 días atrás)
+        if (diffDays >= 0 && diffDays <= 6) {
+          const dayKey = orderDate.toLocaleDateString('es-PE', { day: '2-digit', month: 'short' });
+          if (dailyData[dayKey]) {
+            dailyData[dayKey].pedidos += 1;
+            dailyData[dayKey].ingresos += parseFloat(order.total || 0);
+          }
+        }
+      } catch (e) {
+        console.error("Error procesando fecha de pedido:", order.created_at, e);
+      }
     });
 
-    const ordersByDay = last7Days.map(day => ({
-      name: day,
-      pedidos: Math.floor(Math.random() * 10) + 1,
-      ingresos: Math.floor(Math.random() * 500) + 100
-    }));
-
-    return ordersByDay;
+     // Convertir el objeto a un array ordenado por fecha
+    return Object.values(dailyData).sort((a, b) => {
+        try{
+            // Convertir '01 Ene' a fecha para ordenar correctamente
+             const currentYear = new Date().getFullYear(); // Asegurar el año correcto
+             const dateA = new Date(a.name.replace(/ /g,'-') + `-${currentYear}`);
+             const dateB = new Date(b.name.replace(/ /g,'-') + `-${currentYear}`);
+             // Simple fix si las fechas cruzan el año nuevo (ej. Dic vs Ene)
+             if (dateA.getMonth() === 11 && dateB.getMonth() === 0) return -1;
+             if (dateA.getMonth() === 0 && dateB.getMonth() === 11) return 1;
+             return dateA - dateB;
+        } catch(e) {
+            console.error("Error sorting daily chart data:", a.name, b.name, e);
+            return 0;
+        }
+    });
   };
 
-  const getCategoryData = () => {
-    const categories = {};
-    products.forEach(p => {
-      categories[p.category] = (categories[p.category] || 0) + 1;
+  const getMonthlySalesData = () => {
+    const monthlyData = {};
+
+    orders.forEach(order => {
+      try {
+        const orderDate = new Date(order.created_at);
+        if (isNaN(orderDate)) return; // Saltar si fecha inválida
+
+        // Formato: 'Ene 2025'
+        const monthKey = orderDate.toLocaleDateString('es-PE', { month: 'short', year: 'numeric' });
+
+        if (!monthlyData[monthKey]) {
+            monthlyData[monthKey] = { name: monthKey, pedidos: 0, ingresos: 0 };
+        }
+        monthlyData[monthKey].pedidos += 1;
+        monthlyData[monthKey].ingresos += parseFloat(order.total || 0);
+      } catch (e) {
+         console.error("Error procesando fecha para gráfico mensual:", order.created_at, e);
+      }
     });
 
-    return Object.keys(categories).map(key => ({
+     // Convertir el objeto a un array y ordenar por fecha
+    return Object.values(monthlyData).sort((a, b) => {
+       try {
+           // Intenta parsear directamente 'Ene 2025'
+           const dateA = new Date(a.name.replace(' ', ' 1, '));
+           const dateB = new Date(b.name.replace(' ', ' 1, '));
+           return dateA - dateB;
+       } catch (e) {
+           console.error("Error sorting monthly chart data:", a.name, b.name, e);
+           return 0;
+       }
+    });
+  };
+
+
+  const getCategoryData = () => {
+    const categoriesCount = {};
+    products.forEach(p => {
+      const categoryName = CATEGORIES.find(cat => cat.id === p.category)?.name || p.category; // Usar nombre legible
+      categoriesCount[categoryName] = (categoriesCount[categoryName] || 0) + 1;
+    });
+
+    return Object.keys(categoriesCount).map(key => ({
       name: key,
-      value: categories[key]
+      value: categoriesCount[key]
     }));
   };
 
   const COLORS = ['#667eea', '#764ba2', '#f093fb', '#4facfe', '#43e97b', '#fa709a'];
 
+  // --- Gestión de Productos ---
   const handleProductSubmit = async (e) => {
     e.preventDefault();
-    
-    try {
-      const endpoint = editingProduct 
-        ? `${API_URL}/update_product.php`
-        : `${API_URL}/create_product.php`;
-      
-      const formData = new FormData();
-      Object.keys(productForm).forEach(key => {
-        formData.append(key, productForm[key]);
-      });
-      
-      if (editingProduct) {
-        formData.append('id', editingProduct.id);
-      }
 
-      const response = await axios.post(endpoint, formData, {
-        withCredentials: true
+    // Validar campos
+    if (!productForm.name || !productForm.description || !productForm.price || !productForm.stock) {
+        toast.error('Por favor completa todos los campos obligatorios (*)');
+        return;
+    }
+    if (isNaN(parseFloat(productForm.price)) || parseFloat(productForm.price) <= 0) {
+        toast.error('El precio debe ser un número positivo.');
+        return;
+    }
+     if (isNaN(parseInt(productForm.stock)) || parseInt(productForm.stock) < 0) {
+        toast.error('El stock debe ser un número entero no negativo.');
+        return;
+    }
+
+    try {
+      // Determinar si es creación o edición
+      // ¡ASEGÚRATE DE TENER ESTOS ENDPOINTS EN TU CARPETA API!
+      const endpoint = editingProduct
+        ? `${API_URL}/update_product.php` // Necesitas crear api/update_product.php
+        : `${API_URL}/create_product.php`; // Necesitas crear api/create_product.php
+
+      const payload = {
+          ...productForm,
+          id: editingProduct ? editingProduct.id : undefined // Enviar ID solo si se está editando
+      };
+
+      const response = await axios.post(endpoint, payload, { // Enviar como JSON
+        withCredentials: true,
+        headers: { 'Content-Type': 'application/json' } // Indicar que es JSON
       });
 
       if (response.data.success) {
         toast.success(editingProduct ? 'Producto actualizado' : 'Producto creado');
         setShowProductModal(false);
         resetProductForm();
-        loadProducts();
+        loadProducts(); // Recargar productos
       } else {
         toast.error(response.data.message || 'Error al guardar producto');
       }
     } catch (error) {
-      toast.error('Error al guardar producto');
+       console.error("Error guardando producto:", error);
+      toast.error('Error al guardar producto. Revisa la consola.');
     }
   };
 
@@ -169,50 +313,30 @@ const Admin = () => {
   };
 
   const handleDeleteProduct = async (productId) => {
-    if (!window.confirm('¿Estás seguro de eliminar este producto?')) return;
-    
+    if (!window.confirm('¿Estás seguro de eliminar este producto? Esta acción no se puede deshacer.')) return;
+
     try {
-      const response = await axios.post(`${API_URL}/delete_product.php`, 
+      // ¡ASEGÚRATE DE TENER ESTE ENDPOINT EN TU CARPETA API!
+      const response = await axios.post(`${API_URL}/delete_product.php`, // Necesitas crear api/delete_product.php
         { id: productId },
-        { withCredentials: true }
+        {
+          withCredentials: true,
+          headers: { 'Content-Type': 'application/json' }
+        }
       );
 
       if (response.data.success) {
         toast.success('Producto eliminado');
-        loadProducts();
+        loadProducts(); // Recargar productos
       } else {
         toast.error(response.data.message || 'Error al eliminar');
       }
     } catch (error) {
-      toast.error('Error al eliminar producto');
+      console.error("Error eliminando producto:", error);
+      toast.error('Error al eliminar producto. Revisa la consola.');
     }
   };
 
-  const handleUpdateOrderStatus = async (orderId, newStatus) => {
-    try {
-      const response = await axios.post(`${API_URL}/update_order_status.php`, 
-        { order_id: orderId, status: newStatus },
-        { withCredentials: true }
-      );
-
-      if (response.data.success) {
-        toast.success('Estado actualizado');
-        loadOrders();
-        if (selectedOrder && selectedOrder.id === orderId) {
-          setSelectedOrder({...selectedOrder, status: newStatus});
-        }
-      } else {
-        toast.error(response.data.message || 'Error al actualizar');
-      }
-    } catch (error) {
-      toast.error('Error al actualizar estado');
-    }
-  };
-
-  const handleViewOrder = (order) => {
-    setSelectedOrder(order);
-    setShowOrderModal(true);
-  };
 
   const resetProductForm = () => {
     setEditingProduct(null);
@@ -220,28 +344,73 @@ const Admin = () => {
       name: '',
       description: '',
       price: '',
-      category: 'ramos',
+      category: CATEGORIES.find(c => c.id !== 'all')?.id || 'ramos', // Valor por defecto válido
       stock: '',
       image: ''
     });
   };
 
+  // --- Gestión de Pedidos ---
+  const handleUpdateOrderStatus = async (orderId, newStatus) => {
+    try {
+      const response = await axios.post(`${API_URL}/update_order_status.php`,
+        { order_id: orderId, status: newStatus },
+        {
+          withCredentials: true,
+          headers: { 'Content-Type': 'application/json' } // Especificar JSON
+         }
+      );
+
+      if (response.data.success) {
+        toast.success('Estado actualizado');
+        loadOrders(); // Recargar pedidos
+        // Actualizar el estado en el modal si está abierto
+        if (selectedOrder && selectedOrder.id === orderId) {
+          setSelectedOrder({...selectedOrder, status: newStatus});
+        }
+      } else {
+        toast.error(response.data.message || 'Error al actualizar estado');
+      }
+    } catch (error) {
+      console.error("Error actualizando estado:", error);
+      // Mostrar mensaje de error más específico si el servidor lo envía
+      const errorMsg = error.response?.data?.message || 'Error de conexión al actualizar estado.';
+      toast.error(errorMsg);
+    }
+  };
+
+
+  const handleViewOrder = (order) => {
+    setSelectedOrder(order);
+    setShowOrderModal(true);
+  };
+
+
+  // --- Renderizado ---
   const getStatusBadge = (status) => {
-    const statusInfo = ORDER_STATUS[status] || ORDER_STATUS.pending;
+    const statusInfo = ORDER_STATUS[status] || { label: status, color: 'secondary' }; // Fallback
     return <span className={`badge bg-${statusInfo.color} status-badge`}>{statusInfo.label}</span>;
   };
 
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleString('es-PE', {
-      day: '2-digit',
-      month: 'long',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    if (!dateString) return 'Fecha inválida';
+    try {
+        const date = new Date(dateString);
+         if (isNaN(date)) return 'Fecha inválida';
+        return date.toLocaleString('es-PE', {
+          day: '2-digit',
+          month: 'long',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+    } catch (e) {
+        return 'Fecha inválida';
+    }
   };
 
-  if (loading) {
+  // Renderizado del Spinner de carga inicial o si no es admin
+  if (contextLoading || loading) {
     return (
       <div className="admin-loading">
         <div className="admin-spinner"></div>
@@ -249,6 +418,7 @@ const Admin = () => {
     );
   }
 
+  // Renderizado principal del panel
   return (
     <div className="admin-wrapper">
       {/* Sidebar */}
@@ -262,7 +432,7 @@ const Admin = () => {
         </div>
 
         <nav className="admin-nav">
-          <div 
+          <div
             className={`admin-nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
             onClick={() => setActiveTab('dashboard')}
           >
@@ -270,7 +440,7 @@ const Admin = () => {
             Dashboard
           </div>
 
-          <div 
+          <div
             className={`admin-nav-item ${activeTab === 'orders' ? 'active' : ''}`}
             onClick={() => setActiveTab('orders')}
           >
@@ -281,7 +451,7 @@ const Admin = () => {
             )}
           </div>
 
-          <div 
+          <div
             className={`admin-nav-item ${activeTab === 'products' ? 'active' : ''}`}
             onClick={() => setActiveTab('products')}
           >
@@ -292,7 +462,7 @@ const Admin = () => {
             )}
           </div>
 
-          <div 
+          <div
             className={`admin-nav-item ${activeTab === 'analytics' ? 'active' : ''}`}
             onClick={() => setActiveTab('analytics')}
           >
@@ -346,16 +516,14 @@ const Admin = () => {
             <div>
               {/* Stats Cards */}
               <div className="row g-4 mb-4">
-                <div className="col-lg-3 col-md-6">
+                 <div className="col-lg-3 col-md-6">
                   <div className="stat-card">
                     <div className="d-flex justify-content-between align-items-center">
                       <div>
                         <p className="text-muted mb-1 small">Total Pedidos</p>
                         <h2 className="mb-0 fw-bold">{stats.totalOrders}</h2>
-                        <small className="text-success">
-                          <i className="fas fa-arrow-up me-1"></i>
-                          +12% vs mes anterior
-                        </small>
+                         {/* Puedes añadir lógica para comparar con datos anteriores si los tienes */}
+                        {/* <small className="text-success"><i className="fas fa-arrow-up me-1"></i>+X%</small> */}
                       </div>
                       <div className="stat-icon blue">
                         <i className="fas fa-shopping-cart"></i>
@@ -388,10 +556,8 @@ const Admin = () => {
                       <div>
                         <p className="text-muted mb-1 small">Ingresos Totales</p>
                         <h2 className="mb-0 fw-bold">S/ {stats.totalRevenue}</h2>
-                        <small className="text-success">
-                          <i className="fas fa-arrow-up me-1"></i>
-                          +8% vs mes anterior
-                        </small>
+                         {/* Puedes añadir lógica para comparar con datos anteriores */}
+                       {/* <small className="text-success"><i className="fas fa-arrow-up me-1"></i>+Y%</small> */}
                       </div>
                       <div className="stat-icon green">
                         <i className="fas fa-dollar-sign"></i>
@@ -406,10 +572,14 @@ const Admin = () => {
                       <div>
                         <p className="text-muted mb-1 small">Productos</p>
                         <h2 className="mb-0 fw-bold">{stats.totalProducts}</h2>
-                        <small className="text-danger">
-                          <i className="fas fa-exclamation-triangle me-1"></i>
-                          {stats.lowStock} con poco stock
-                        </small>
+                         {stats.lowStock > 0 ? (
+                            <small className="text-danger">
+                            <i className="fas fa-exclamation-triangle me-1"></i>
+                            {stats.lowStock} con poco stock
+                            </small>
+                         ) : (
+                            <small className="text-muted">Stock OK</small>
+                         )}
                       </div>
                       <div className="stat-icon purple">
                         <i className="fas fa-box"></i>
@@ -427,17 +597,20 @@ const Admin = () => {
                       <i className="fas fa-chart-line me-2 text-primary"></i>
                       Pedidos e Ingresos (Últimos 7 días)
                     </h5>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <LineChart data={getChartData()}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="name" />
-                        <YAxis />
-                        <Tooltip />
-                        <Legend />
-                        <Line type="monotone" dataKey="pedidos" stroke="#667eea" strokeWidth={3} />
-                        <Line type="monotone" dataKey="ingresos" stroke="#43e97b" strokeWidth={3} />
-                      </LineChart>
-                    </ResponsiveContainer>
+                    {orders.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={300}>
+                        <LineChart data={getChartData()}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="name" />
+                          <YAxis yAxisId="left" />
+                          <YAxis yAxisId="right" orientation="right" />
+                          <Tooltip formatter={(value, name) => name === 'ingresos' ? `S/ ${value.toFixed(2)}` : value} />
+                          <Legend />
+                          <Line yAxisId="left" type="monotone" dataKey="pedidos" stroke="#667eea" strokeWidth={3} name="Pedidos" />
+                          <Line yAxisId="right" type="monotone" dataKey="ingresos" stroke="#43e97b" strokeWidth={3} name="Ingresos (S/)" />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    ) : (<p className='text-center text-muted'>No hay suficientes datos de pedidos recientes.</p>)}
                   </div>
                 </div>
 
@@ -447,37 +620,40 @@ const Admin = () => {
                       <i className="fas fa-chart-pie me-2 text-primary"></i>
                       Productos por Categoría
                     </h5>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <PieChart>
-                        <Pie
-                          data={getCategoryData()}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          label={(entry) => entry.name}
-                          outerRadius={80}
-                          fill="#8884d8"
-                          dataKey="value"
-                        >
-                          {getCategoryData().map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip />
-                      </PieChart>
-                    </ResponsiveContainer>
+                     {products.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={300}>
+                        <PieChart>
+                          <Pie
+                            data={getCategoryData()}
+                            cx="50%"
+                            cy="50%"
+                            labelLine={false}
+                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                            outerRadius={80}
+                            fill="#8884d8"
+                            dataKey="value"
+                          >
+                            {getCategoryData().map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip formatter={(value) => `${value} producto(s)`}/>
+                           <Legend />
+                        </PieChart>
+                      </ResponsiveContainer>
+                     ) : (<p className='text-center text-muted'>No hay productos para mostrar categorías.</p>)}
                   </div>
                 </div>
               </div>
 
               {/* Recent Orders */}
               <div className="content-card">
-                <div className="content-card-header">
+                 <div className="content-card-header">
                   <h5 className="mb-0">
                     <i className="fas fa-clock me-2"></i>
                     Pedidos Recientes
                   </h5>
-                  <button 
+                  <button
                     className="btn btn-sm btn-primary"
                     onClick={() => setActiveTab('orders')}
                   >
@@ -485,6 +661,7 @@ const Admin = () => {
                   </button>
                 </div>
                 <div className="content-card-body">
+                 {orders.length > 0 ? (
                   <div className="table-responsive">
                     <table className="table table-custom">
                       <thead>
@@ -501,7 +678,7 @@ const Admin = () => {
                           <tr key={order.id}>
                             <td className="fw-bold">#{order.id}</td>
                             <td>{order.customer_name}</td>
-                            <td className="fw-bold text-success">S/ {parseFloat(order.total).toFixed(2)}</td>
+                            <td className="fw-bold text-success">S/ {parseFloat(order.total || 0).toFixed(2)}</td>
                             <td>{getStatusBadge(order.status)}</td>
                             <td className="text-muted small">{formatDate(order.created_at)}</td>
                           </tr>
@@ -509,6 +686,7 @@ const Admin = () => {
                       </tbody>
                     </table>
                   </div>
+                  ) : (<p className='text-center text-muted p-3'>Aún no hay pedidos registrados.</p>)}
                 </div>
               </div>
             </div>
@@ -516,7 +694,7 @@ const Admin = () => {
 
           {/* Orders Tab */}
           {activeTab === 'orders' && (
-            <div>
+             <div>
               <div className="content-card">
                 <div className="content-card-header">
                   <h5 className="mb-0">
@@ -524,9 +702,10 @@ const Admin = () => {
                     Todos los Pedidos ({orders.length})
                   </h5>
                   <div>
-                    <button className="btn btn-sm btn-success me-2">
+                    {/* Funcionalidad de exportar requiere lógica adicional (ej. librería CSV) */}
+                    <button className="btn btn-sm btn-success me-2" disabled>
                       <i className="fas fa-file-excel me-2"></i>
-                      Exportar
+                      Exportar (Próximamente)
                     </button>
                     <button className="btn btn-sm btn-primary" onClick={loadOrders}>
                       <i className="fas fa-sync-alt me-2"></i>
@@ -535,6 +714,7 @@ const Admin = () => {
                   </div>
                 </div>
                 <div className="content-card-body">
+                 {orders.length > 0 ? (
                   <div className="table-responsive">
                     <table className="table table-custom">
                       <thead>
@@ -554,18 +734,20 @@ const Admin = () => {
                         {orders.map(order => (
                           <tr key={order.id}>
                             <td className="fw-bold">#{order.id}</td>
-                            <td>{order.customer_name}</td>
-                            <td className="text-muted">{order.customer_email}</td>
+                            <td>{order.customer_name || 'N/A'}</td>
+                            <td className="text-muted">{order.customer_email || 'N/A'}</td>
                             <td>{order.customer_phone || 'N/A'}</td>
-                            <td className="fw-bold text-success">S/ {parseFloat(order.total).toFixed(2)}</td>
+                            <td className="fw-bold text-success">S/ {parseFloat(order.total || 0).toFixed(2)}</td>
                             <td>{getStatusBadge(order.status)}</td>
                             <td>
                               {order.receipt_image ? (
-                                <img 
+                                <img
+                                  // Asumiendo que 'uploads' está en public o servido estáticamente
                                   src={`/uploads/receipts/${order.receipt_image}`}
                                   alt="Comprobante"
                                   className="receipt-img"
                                   onClick={() => window.open(`/uploads/receipts/${order.receipt_image}`, '_blank')}
+                                  onError={(e) => { e.target.style.display='none'; /* Ocultar si hay error */ }}
                                 />
                               ) : (
                                 <span className="text-muted small">Sin comprobante</span>
@@ -573,9 +755,10 @@ const Admin = () => {
                             </td>
                             <td className="text-muted small">{formatDate(order.created_at)}</td>
                             <td>
-                              <button 
+                              <button
                                 className="btn btn-sm btn-info btn-action"
                                 onClick={() => handleViewOrder(order)}
+                                title="Ver Detalles"
                               >
                                 <i className="fas fa-eye"></i>
                               </button>
@@ -585,6 +768,7 @@ const Admin = () => {
                       </tbody>
                     </table>
                   </div>
+                  ) : (<p className='text-center text-muted p-3'>No hay pedidos para mostrar.</p>)}
                 </div>
               </div>
             </div>
@@ -600,7 +784,7 @@ const Admin = () => {
                     Gestión de Productos ({products.length})
                   </h5>
                   <div>
-                    <button 
+                    <button
                       className="btn btn-sm btn-success me-2"
                       onClick={() => {
                         resetProductForm();
@@ -617,6 +801,7 @@ const Admin = () => {
                   </div>
                 </div>
                 <div className="content-card-body">
+                 {products.length > 0 ? (
                   <div className="table-responsive">
                     <table className="table table-custom">
                       <thead>
@@ -636,23 +821,27 @@ const Admin = () => {
                           <tr key={product.id}>
                             <td className="fw-bold">#{product.id}</td>
                             <td>
-                              <img 
-                                src={product.image ? `/images/products/${product.image}` : '/images/placeholder.jpg'}
+                              <img
+                                src={product.image ? `/images/products/${product.image}` : 'https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=100'}
                                 alt={product.name}
                                 className="product-img-thumb"
+                                onError={(e) => {
+                                  e.target.src = "https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=100";
+                                }}
                               />
                             </td>
                             <td>
                               <strong>{product.name}</strong>
                               <br />
-                              <small className="text-muted">{product.description?.substring(0, 50)}...</small>
+                              <small className="text-muted" title={product.description}>{product.description?.substring(0, 50)}{product.description?.length > 50 ? '...' : ''}</small>
                             </td>
                             <td>
-                              <span className="badge bg-info">{product.category}</span>
+                               {/* Mostrar nombre legible de categoría */}
+                              <span className="badge bg-info">{CATEGORIES.find(c=>c.id === product.category)?.name || product.category}</span>
                             </td>
-                            <td className="fw-bold text-success">S/ {parseFloat(product.price).toFixed(2)}</td>
+                            <td className="fw-bold text-success">S/ {parseFloat(product.price || 0).toFixed(2)}</td>
                             <td>
-                              <span className={`badge ${product.stock < 10 ? 'bg-danger' : 'bg-success'}`}>
+                              <span className={`badge ${product.stock < 10 ? 'bg-warning text-dark' : 'bg-secondary'}`}>
                                 {product.stock} unidades
                               </span>
                             </td>
@@ -664,15 +853,17 @@ const Admin = () => {
                               )}
                             </td>
                             <td>
-                              <button 
+                              <button
                                 className="btn btn-sm btn-warning btn-action me-1"
                                 onClick={() => handleEditProduct(product)}
+                                title="Editar"
                               >
                                 <i className="fas fa-edit"></i>
                               </button>
-                              <button 
+                              <button
                                 className="btn btn-sm btn-danger btn-action"
                                 onClick={() => handleDeleteProduct(product.id)}
+                                title="Eliminar"
                               >
                                 <i className="fas fa-trash"></i>
                               </button>
@@ -682,6 +873,7 @@ const Admin = () => {
                       </tbody>
                     </table>
                   </div>
+                  ) : (<p className='text-center text-muted p-3'>No hay productos registrados.</p>)}
                 </div>
               </div>
             </div>
@@ -697,49 +889,57 @@ const Admin = () => {
                       <i className="fas fa-chart-bar me-2 text-primary"></i>
                       Análisis de Ventas por Mes
                     </h5>
-                    <ResponsiveContainer width="100%" height={400}>
-                      <BarChart data={getChartData()}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="name" />
-                        <YAxis />
-                        <Tooltip />
-                        <Legend />
-                        <Bar dataKey="pedidos" fill="#667eea" />
-                        <Bar dataKey="ingresos" fill="#43e97b" />
-                      </BarChart>
-                    </ResponsiveContainer>
+                     {orders.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={400}>
+                        <BarChart data={getMonthlySalesData()}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="name" />
+                          <YAxis yAxisId="left" />
+                          <YAxis yAxisId="right" orientation="right" />
+                          <Tooltip formatter={(value, name) => name === 'ingresos' ? `S/ ${value.toFixed(2)}` : value} />
+                          <Legend />
+                          <Bar yAxisId="left" dataKey="pedidos" fill="#667eea" name="Pedidos"/>
+                          <Bar yAxisId="right" dataKey="ingresos" fill="#43e97b" name="Ingresos (S/)"/>
+                        </BarChart>
+                      </ResponsiveContainer>
+                     ) : (<p className='text-center text-muted'>No hay datos suficientes para el análisis mensual.</p>)}
                   </div>
                 </div>
               </div>
 
               <div className="row g-4">
+                {/* Lógica de "Más Vendidos" y "Clientes Frecuentes" requiere más datos/backend */}
                 <div className="col-lg-6">
                   <div className="content-card">
                     <div className="content-card-header">
                       <h5 className="mb-0">
                         <i className="fas fa-star me-2"></i>
-                        Productos Más Vendidos
+                        Productos Más Vendidos (Ejemplo)
                       </h5>
                     </div>
                     <div className="content-card-body">
+                     {products.length > 0 ? (
                       <div className="list-group list-group-flush">
-                        {products.slice(0, 5).map((product, index) => (
+                        {/* Datos simulados, reemplazar con lógica real si es posible */}
+                        {[...products].sort(() => 0.5 - Math.random()).slice(0, 5).map((product, index) => (
                           <div key={product.id} className="list-group-item d-flex justify-content-between align-items-center">
                             <div className="d-flex align-items-center">
                               <div className="rank-badge me-3">{index + 1}</div>
                               <div>
                                 <strong>{product.name}</strong>
                                 <br />
-                                <small className="text-muted">{product.category}</small>
+                                <small className="text-muted">{CATEGORIES.find(c=>c.id === product.category)?.name || product.category}</small>
                               </div>
                             </div>
                             <div className="text-end">
-                              <div className="fw-bold text-success">S/ {parseFloat(product.price).toFixed(2)}</div>
-                              <small className="text-muted">{Math.floor(Math.random() * 50)} ventas</small>
+                              <div className="fw-bold text-success">S/ {parseFloat(product.price || 0).toFixed(2)}</div>
+                              {/* Ventas simuladas */}
+                              <small className="text-muted">{Math.floor(Math.random() * 50) + 5} ventas</small>
                             </div>
                           </div>
                         ))}
                       </div>
+                      ) : (<p className='text-center text-muted p-3'>No hay productos.</p>)}
                     </div>
                   </div>
                 </div>
@@ -749,28 +949,36 @@ const Admin = () => {
                     <div className="content-card-header">
                       <h5 className="mb-0">
                         <i className="fas fa-users me-2"></i>
-                        Clientes Frecuentes
+                        Clientes Frecuentes (Ejemplo)
                       </h5>
                     </div>
-                    <div className="content-card-body">
+                     <div className="content-card-body">
+                      {orders.length > 0 ? (
                       <div className="list-group list-group-flush">
-                        {orders.slice(0, 5).map((order, index) => (
-                          <div key={order.id} className="list-group-item d-flex justify-content-between align-items-center">
+                         {/* Datos simulados, requiere agrupar por cliente en backend */}
+                        {Object.values(orders.reduce((acc, order) => {
+                            acc[order.customer_email] = acc[order.customer_email] || { ...order, count: 0, totalSpent: 0 };
+                            acc[order.customer_email].count++;
+                            acc[order.customer_email].totalSpent += parseFloat(order.total || 0);
+                            return acc;
+                        }, {})).sort((a,b) => b.count - a.count).slice(0, 5).map((order, index) => (
+                          <div key={order.id + '-' + index} className="list-group-item d-flex justify-content-between align-items-center">
                             <div className="d-flex align-items-center">
                               <div className="rank-badge me-3">{index + 1}</div>
                               <div>
-                                <strong>{order.customer_name}</strong>
+                                <strong>{order.customer_name || 'N/A'}</strong>
                                 <br />
-                                <small className="text-muted">{order.customer_email}</small>
+                                <small className="text-muted">{order.customer_email || 'N/A'}</small>
                               </div>
                             </div>
                             <div className="text-end">
-                              <div className="fw-bold text-primary">{Math.floor(Math.random() * 10) + 1} pedidos</div>
-                              <small className="text-muted">S/ {(Math.random() * 1000 + 500).toFixed(2)}</small>
+                              <div className="fw-bold text-primary">{order.count} pedido(s)</div>
+                              <small className="text-muted">S/ {order.totalSpent.toFixed(2)}</small>
                             </div>
                           </div>
                         ))}
                       </div>
+                      ) : (<p className='text-center text-muted p-3'>No hay pedidos.</p>)}
                     </div>
                   </div>
                 </div>
@@ -779,6 +987,8 @@ const Admin = () => {
           )}
         </div>
       </main>
+
+      {/* --- MODALES --- */}
 
       {/* Modal de Producto */}
       {showProductModal && (
@@ -789,7 +999,7 @@ const Admin = () => {
                 <i className="fas fa-box me-2"></i>
                 {editingProduct ? 'Editar Producto' : 'Nuevo Producto'}
               </h5>
-              <button 
+              <button
                 className="btn-close-modal"
                 onClick={() => setShowProductModal(false)}
               >
@@ -829,12 +1039,10 @@ const Admin = () => {
                       onChange={(e) => setProductForm({...productForm, category: e.target.value})}
                       required
                     >
-                      <option value="ramos">Ramos</option>
-                      <option value="arreglos">Arreglos</option>
-                      <option value="coronas">Coronas</option>
-                      <option value="cajas">Cajas</option>
-                      <option value="centros">Centros de Mesa</option>
-                      <option value="eventos">Para Eventos</option>
+                      {/* Cargar categorías desde config.js, excluyendo 'all' */}
+                      {CATEGORIES.filter(cat => cat.id !== 'all').map(cat => (
+                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                      ))}
                     </select>
                   </div>
 
@@ -843,6 +1051,7 @@ const Admin = () => {
                     <input
                       type="number"
                       step="0.01"
+                      min="0.01" // Precio mínimo
                       className="form-control"
                       value={productForm.price}
                       onChange={(e) => setProductForm({...productForm, price: e.target.value})}
@@ -854,6 +1063,8 @@ const Admin = () => {
                     <label className="form-label">Stock *</label>
                     <input
                       type="number"
+                      min="0" // Stock mínimo
+                      step="1" // Solo enteros
                       className="form-control"
                       value={productForm.stock}
                       onChange={(e) => setProductForm({...productForm, stock: e.target.value})}
@@ -862,7 +1073,7 @@ const Admin = () => {
                   </div>
 
                   <div className="col-md-6">
-                    <label className="form-label">URL de Imagen</label>
+                    <label className="form-label">Nombre de Imagen</label>
                     <input
                       type="text"
                       className="form-control"
@@ -870,12 +1081,13 @@ const Admin = () => {
                       onChange={(e) => setProductForm({...productForm, image: e.target.value})}
                       placeholder="ejemplo.jpg"
                     />
+                     <small className="text-muted">Solo el nombre (ej. rosas.jpg). Sube la imagen a /public/images/products/</small>
                   </div>
                 </div>
               </div>
               <div className="modal-footer">
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   className="btn btn-secondary"
                   onClick={() => setShowProductModal(false)}
                 >
@@ -900,7 +1112,7 @@ const Admin = () => {
                 <i className="fas fa-shopping-bag me-2"></i>
                 Detalle del Pedido #{selectedOrder.id}
               </h5>
-              <button 
+              <button
                 className="btn-close-modal"
                 onClick={() => setShowOrderModal(false)}
               >
@@ -911,18 +1123,18 @@ const Admin = () => {
               <div className="row g-4">
                 {/* Información del Cliente */}
                 <div className="col-md-6">
-                  <div className="info-card">
+                  <div className="info-card h-100"> {/* h-100 para igualar altura */}
                     <h6 className="mb-3">
                       <i className="fas fa-user me-2 text-primary"></i>
                       Información del Cliente
                     </h6>
                     <div className="info-item">
                       <span className="info-label">Nombre:</span>
-                      <span className="info-value">{selectedOrder.customer_name}</span>
+                      <span className="info-value">{selectedOrder.customer_name || 'N/A'}</span>
                     </div>
                     <div className="info-item">
                       <span className="info-label">Email:</span>
-                      <span className="info-value">{selectedOrder.customer_email}</span>
+                      <span className="info-value">{selectedOrder.customer_email || 'N/A'}</span>
                     </div>
                     <div className="info-item">
                       <span className="info-label">Teléfono:</span>
@@ -937,7 +1149,7 @@ const Admin = () => {
 
                 {/* Información del Pedido */}
                 <div className="col-md-6">
-                  <div className="info-card">
+                   <div className="info-card h-100"> {/* h-100 para igualar altura */}
                     <h6 className="mb-3">
                       <i className="fas fa-info-circle me-2 text-primary"></i>
                       Información del Pedido
@@ -953,13 +1165,10 @@ const Admin = () => {
                     <div className="info-item">
                       <span className="info-label">Total:</span>
                       <span className="info-value fw-bold text-success">
-                        S/ {parseFloat(selectedOrder.total).toFixed(2)}
+                        S/ {parseFloat(selectedOrder.total || 0).toFixed(2)}
                       </span>
                     </div>
-                    <div className="info-item">
-                      <span className="info-label">Método de Pago:</span>
-                      <span className="info-value">{selectedOrder.payment_method === 'transfer' ? 'Transferencia' : 'Efectivo'}</span>
-                    </div>
+                    {/* Quitado Método de Pago ya que no está en la API get_orders */}
                   </div>
                 </div>
 
@@ -972,14 +1181,15 @@ const Admin = () => {
                         Comprobante de Pago
                       </h6>
                       <div className="text-center">
-                        <img 
+                        <img
                           src={`/uploads/receipts/${selectedOrder.receipt_image}`}
                           alt="Comprobante"
                           className="img-fluid rounded"
-                          style={{maxHeight: '400px', cursor: 'pointer'}}
+                          style={{maxHeight: '400px', cursor: 'pointer', border: '1px solid #ddd'}}
                           onClick={() => window.open(`/uploads/receipts/${selectedOrder.receipt_image}`, '_blank')}
+                           onError={(e) => { e.target.alt='Error al cargar imagen'; e.target.style.display='none';}}
                         />
-                        <p className="text-muted small mt-2">
+                        <p className="text-muted small mt-2 mb-0">
                           <i className="fas fa-search-plus me-1"></i>
                           Click para ver en tamaño completo
                         </p>
@@ -995,36 +1205,42 @@ const Admin = () => {
                       <i className="fas fa-box me-2 text-primary"></i>
                       Productos del Pedido
                     </h6>
-                    <div className="table-responsive">
-                      <table className="table table-sm">
-                        <thead>
-                          <tr>
-                            <th>Producto</th>
-                            <th>Cantidad</th>
-                            <th>Precio Unit.</th>
-                            <th>Subtotal</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {selectedOrder.items && JSON.parse(selectedOrder.items).map((item, index) => (
-                            <tr key={index}>
-                              <td>{item.name}</td>
-                              <td>{item.quantity}</td>
-                              <td>S/ {parseFloat(item.price).toFixed(2)}</td>
-                              <td className="fw-bold">S/ {(item.quantity * item.price).toFixed(2)}</td>
+                    {/* Verificar si hay items */}
+                    {selectedOrder.items && selectedOrder.items.length > 0 ? (
+                      <div className="table-responsive">
+                        <table className="table table-sm mb-0">
+                          <thead>
+                            <tr>
+                              <th>Producto</th>
+                              <th className='text-center'>Cantidad</th>
+                              <th className='text-end'>Precio Unit.</th>
+                              <th className='text-end'>Subtotal</th>
                             </tr>
-                          ))}
-                        </tbody>
-                        <tfoot>
-                          <tr className="table-active">
-                            <td colspan="3" className="text-end fw-bold">TOTAL:</td>
-                            <td className="fw-bold text-success">S/ {parseFloat(selectedOrder.total).toFixed(2)}</td>
-                          </tr>
-                        </tfoot>
-                      </table>
-                    </div>
+                          </thead>
+                          <tbody>
+                            {selectedOrder.items.map((item, index) => (
+                              <tr key={index}>
+                                <td>{item.name}</td>
+                                <td className='text-center'>{item.quantity}</td>
+                                <td className='text-end'>S/ {parseFloat(item.price || 0).toFixed(2)}</td>
+                                <td className="fw-bold text-end">S/ {((item.quantity || 0) * (item.price || 0)).toFixed(2)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr className="table-light">
+                              <td colSpan="3" className="text-end fw-bold">TOTAL:</td>
+                              <td className="fw-bold text-success text-end">S/ {parseFloat(selectedOrder.total || 0).toFixed(2)}</td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="text-muted text-center mb-0">No se encontraron los detalles de los productos para este pedido.</p>
+                    )}
                   </div>
                 </div>
+
 
                 {/* Notas */}
                 {selectedOrder.notes && (
@@ -1034,7 +1250,7 @@ const Admin = () => {
                         <i className="fas fa-sticky-note me-2 text-primary"></i>
                         Notas del Cliente
                       </h6>
-                      <p className="mb-0">{selectedOrder.notes}</p>
+                      <p className="mb-0 fst-italic">"{selectedOrder.notes}"</p>
                     </div>
                   </div>
                 )}
@@ -1046,55 +1262,37 @@ const Admin = () => {
                       <i className="fas fa-tasks me-2 text-primary"></i>
                       Actualizar Estado
                     </h6>
-                    <div className="d-flex gap-2 flex-wrap">
-                      <button 
-                        className="btn btn-warning"
-                        onClick={() => handleUpdateOrderStatus(selectedOrder.id, 'pending')}
-                        disabled={selectedOrder.status === 'pending'}
-                      >
-                        <i className="fas fa-clock me-2"></i>
-                        Pendiente
-                      </button>
-                      <button 
-                        className="btn btn-info"
-                        onClick={() => handleUpdateOrderStatus(selectedOrder.id, 'processing')}
-                        disabled={selectedOrder.status === 'processing'}
-                      >
-                        <i className="fas fa-cog me-2"></i>
-                        En Proceso
-                      </button>
-                      <button 
-                        className="btn btn-primary"
-                        onClick={() => handleUpdateOrderStatus(selectedOrder.id, 'shipped')}
-                        disabled={selectedOrder.status === 'shipped'}
-                      >
-                        <i className="fas fa-shipping-fast me-2"></i>
-                        Enviado
-                      </button>
-                      <button 
-                        className="btn btn-success"
-                        onClick={() => handleUpdateOrderStatus(selectedOrder.id, 'completed')}
-                        disabled={selectedOrder.status === 'completed'}
-                      >
-                        <i className="fas fa-check-circle me-2"></i>
-                        Completado
-                      </button>
-                      <button 
-                        className="btn btn-danger"
-                        onClick={() => handleUpdateOrderStatus(selectedOrder.id, 'cancelled')}
-                        disabled={selectedOrder.status === 'cancelled'}
-                      >
-                        <i className="fas fa-times-circle me-2"></i>
-                        Cancelado
-                      </button>
+                    <div className="d-flex gap-2 flex-wrap justify-content-center">
+                       {/* Iterar sobre los estados definidos en config.js */}
+                       {Object.entries(ORDER_STATUS).map(([statusKey, statusInfo]) => (
+                            <button
+                                key={statusKey}
+                                className={`btn btn-sm btn-${statusInfo.color}`}
+                                onClick={() => handleUpdateOrderStatus(selectedOrder.id, statusKey)}
+                                // Deshabilitar si es el estado actual o si es completado/cancelado (estados finales)
+                                disabled={selectedOrder.status === statusKey || ['completed', 'cancelled'].includes(selectedOrder.status)}
+                            >
+                                <i className={`fas ${
+                                    statusKey === 'pending' ? 'fa-clock' :
+                                    statusKey === 'processing' ? 'fa-cog' :
+                                    statusKey === 'completed' ? 'fa-check-circle' :
+                                    statusKey === 'cancelled' ? 'fa-times-circle' : 'fa-question-circle' // Icono por defecto
+                                } me-2`}></i>
+                                {statusInfo.label}
+                            </button>
+                       ))}
                     </div>
+                     {/* Mensaje si el pedido ya está en estado final */}
+                     {['completed', 'cancelled'].includes(selectedOrder.status) && (
+                        <p className='text-muted text-center small mt-3 mb-0'>El pedido ya ha sido {selectedOrder.status === 'completed' ? 'completado' : 'cancelado'} y no se puede cambiar su estado.</p>
+                     )}
                   </div>
                 </div>
               </div>
             </div>
             <div className="modal-footer">
-              <button 
-                type="button" 
+              <button
+                type="button"
                 className="btn btn-secondary"
                 onClick={() => setShowOrderModal(false)}
               >

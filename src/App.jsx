@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { ToastContainer } from 'react-toastify';
-import { AppProvider } from './context/AppContext';
+// import { ToastContainer } from 'react-toastify'; // <-- YA NO SE IMPORTA AQUÍ
+// import { AppProvider } from './context/AppContext'; // <-- YA NO SE IMPORTA AQUÍ
 
 // Componentes
 import Header from './components/Header';
@@ -33,7 +33,7 @@ function App() {
   };
 
   return (
-    <AppProvider>
+    // <AppProvider> <-- ESTO SE QUITA
       <div className="App">
         <Header 
           onShowAuth={() => setShowAuthModal(true)}
@@ -79,18 +79,9 @@ function App() {
           onHide={() => setShowOrdersModal(false)}
         />
 
-        {/* Toast Notifications */}
-        <ToastContainer 
-          position="top-right"
-          autoClose={3000}
-          hideProgressBar={false}
-          newestOnTop
-          closeOnClick
-          pauseOnHover
-          theme="light"
-        />
+        {/* <ToastContainer /> <-- ESTO SE QUITA DE AQUÍ */}
       </div>
-    </AppProvider>
+    // </AppProvider> <-- ESTO SE QUITA
   );
 }
 

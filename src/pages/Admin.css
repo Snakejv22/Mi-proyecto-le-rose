@@ -852,22 +852,3 @@
     margin-left: 0;
   }
 }
-
-/* === DARK MODE SUPPORT (Optional) === */
-@media (prefers-color-scheme: dark) {
-  .admin-wrapper {
-    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-  }
-
-  .content-card,
-  .stat-card,
-  .chart-container,
-  .admin-topbar {
-    background: #1e1e2e;
-    color: #e0e0e0;
-  }
-
-  .table-custom tbody tr:hover {
-    background: #2a2a3e;
-  }
-}
