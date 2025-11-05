@@ -852,3 +852,23 @@
     margin-left: 0;
   }
 }
+
+/* === KPI Cards (Analytics Tab) === */
+.kpi-card {
+  text-align: center;
+  padding: 1.5rem 1rem; /* Padding ajustado */
+  height: 100%; /* Asegura altura completa */
+}
+.kpi-card .text-muted {
+  font-size: 0.9rem; /* Texto superior un poco más grande */
+}
+.kpi-card h3 {
+  font-size: 2.2rem; /* Tamaño de número grande */
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  color: var(--admin-dark);
+}
+.kpi-card small {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
