@@ -4,6 +4,9 @@ import { toast } from 'react-toastify';
 import { useApp } from '../context/AppContext';
 import { API_URL, CATEGORIES } from '../config';
 
+// 🚀 Importación del archivo CSS externo
+import './Products.css'; 
+
 const Products = ({ onShowAuth }) => {
   const { user, addToCart } = useApp();
   const [products, setProducts] = useState([]);
@@ -12,6 +15,8 @@ const Products = ({ onShowAuth }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [addingToCart, setAddingToCart] = useState({});
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
     loadProducts();
@@ -27,11 +32,8 @@ const Products = ({ onShowAuth }) => {
       if (response.data.success) {
         setProducts(response.data.products);
         setFilteredProducts(response.data.products);
-      } else {
-        toast.error('Error al cargar productos');
       }
     } catch (error) {
-      console.error(error);
       toast.error('Error al cargar productos');
     } finally {
       setLoading(false);
@@ -40,37 +42,42 @@ const Products = ({ onShowAuth }) => {
 
   const filterProducts = () => {
     let filtered = products;
-    
-    // Filtrar por categoría
     if (selectedCategory !== 'all') {
       filtered = filtered.filter(p => p.category === selectedCategory);
     }
-    
-    // Filtrar por búsqueda
     if (searchTerm.trim()) {
       filtered = filtered.filter(p => 
         p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         p.description.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
-    
     setFilteredProducts(filtered);
   };
 
-  const handleAddToCart = async (productId) => {
+  const handleAddToCart = async (productId, e) => {
+    e.stopPropagation();
     if (!user) {
       onShowAuth();
       return;
     }
-
     setAddingToCart(prev => ({ ...prev, [productId]: true }));
     await addToCart(productId);
     setAddingToCart(prev => ({ ...prev, [productId]: false }));
   };
 
+  const handleViewDetails = (product) => {
+    setSelectedProduct(product);
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    setTimeout(() => setSelectedProduct(null), 300);
+  };
+
   if (loading) {
     return (
-      <section id="products" className="py-5">
+      <section id="products" className="products-section">
         <div className="container">
           <div className="spinner-container">
             <div className="spinner"></div>
@@ -81,78 +88,66 @@ const Products = ({ onShowAuth }) => {
   }
 
   return (
-    <section id="products" className="py-5">
-      <div className="container">
-        <div className="text-center mb-5 fade-in-up">
-          <h2 className="display-5 mb-3">Nuestro Catálogo</h2>
-          <p className="lead text-muted">
-            Explora nuestra colección de flores y arreglos florales
-          </p>
-        </div>
+    <>
+      <section id="products" className="products-section">
+        <div className="container">
+          {/* Header */}
+          <div className="section-header text-center mb-5">
+            <span className="section-eyebrow">Nuestra Colección</span>
+            <h2 className="section-title">Catálogo Floral Premium</h2>
+            <p className="section-subtitle">
+              Descubre nuestra selección de flores frescas y arreglos únicos
+            </p>
+          </div>
 
-        {/* Buscador */}
-        <div className="row justify-content-center mb-4">
-          <div className="col-lg-6">
-            <div className="input-group input-group-lg">
-              <span className="input-group-text bg-white">
-                <i className="fas fa-search text-primary"></i>
-              </span>
+          {/* Search Bar */}
+          <div className="search-bar-container mb-4">
+            <div className="search-bar">
+              <i className="fas fa-search search-icon"></i>
               <input 
                 type="text"
-                className="form-control"
+                className="search-input"
                 placeholder="Buscar flores, ramos, arreglos..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
               {searchTerm && (
                 <button 
-                  className="btn btn-outline-secondary"
+                  className="search-clear"
                   onClick={() => setSearchTerm('')}
-                  title="Limpiar búsqueda"
                 >
                   <i className="fas fa-times"></i>
                 </button>
               )}
             </div>
           </div>
-        </div>
 
-        {/* Contador de resultados */}
-        {searchTerm && (
-          <div className="text-center mb-3">
-            <small className="text-muted">
-              {filteredProducts.length} producto{filteredProducts.length !== 1 ? 's' : ''} encontrado{filteredProducts.length !== 1 ? 's' : ''}
-              {searchTerm && ` para "${searchTerm}"`}
-            </small>
+          {/* Category Filters */}
+          <div className="category-filters mb-5">
+            {CATEGORIES.map(cat => (
+              <button
+                key={cat.id}
+                className={`category-chip ${selectedCategory === cat.id ? 'active' : ''}`}
+                onClick={() => setSelectedCategory(cat.id)}
+              >
+                {cat.name}
+                {selectedCategory === cat.id && (
+                  <span className="chip-count">
+                    {filteredProducts.length}
+                  </span>
+                )}
+              </button>
+            ))}
           </div>
-        )}
 
-        {/* Filtros de Categoría */}
-        <div className="d-flex justify-content-center flex-wrap gap-2 mb-5">
-          {CATEGORIES.map(cat => (
-            <button
-              key={cat.id}
-              className={`btn ${selectedCategory === cat.id ? 'btn-primary' : 'btn-outline-primary'} rounded-pill`}
-              onClick={() => setSelectedCategory(cat.id)}
-            >
-              {cat.name}
-            </button>
-          ))}
-        </div>
-
-        {/* Grid de Productos */}
-        <div className="row g-4">
+          {/* Products Grid */}
           {filteredProducts.length === 0 ? (
-            <div className="col-12 text-center py-5">
-              <i className="fas fa-search" style={{fontSize: '4rem', color: '#ddd', marginBottom: '1rem'}}></i>
-              <p className="text-muted">
-                {searchTerm 
-                  ? `No se encontraron productos para "${searchTerm}"` 
-                  : 'No hay productos en esta categoría'}
-              </p>
+            <div className="empty-state">
+              <i className="fas fa-search"></i>
+              <p>No se encontraron productos</p>
               {searchTerm && (
                 <button 
-                  className="btn btn-primary-custom mt-3"
+                  className="btn btn-primary-custom"
                   onClick={() => setSearchTerm('')}
                 >
                   Limpiar búsqueda
@@ -160,97 +155,239 @@ const Products = ({ onShowAuth }) => {
               )}
             </div>
           ) : (
-            filteredProducts.map((product, index) => (
-              <div 
-                key={product.id} 
-                className="col-md-6 col-lg-4 fade-in-up"
-                style={{animationDelay: `${index * 0.1}s`}}
-              >
-                <div className="product-card">
-                  <div style={{position: 'relative', overflow: 'hidden'}}>
+            <div className="products-grid">
+              {filteredProducts.map((product) => (
+                <div 
+                  key={product.id} 
+                  className="product-card-modern"
+                  onClick={() => handleViewDetails(product)}
+                >
+                  {/* Image Container */}
+                  <div className="product-image-container">
                     <img 
                       src={product.image 
                         ? `/images/products/${product.image}` 
-                        : "https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=400"
+                        : "https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=800"
                       }
                       alt={product.name}
-                      className="product-image"
+                      className="product-image-modern"
                       onError={(e) => {
-                        e.target.src = "https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=400";
+                        e.target.src = "https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=800";
                       }}
                     />
-                  </div>
-                  
-                  <div className="p-3">
+                    
+                    {/* Overlay Actions */}
+                    <div className="product-overlay">
+                      <button 
+                        className="btn-quick-view"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleViewDetails(product);
+                        }}
+                      >
+                        <i className="fas fa-eye"></i>
+                        Ver Detalles
+                      </button>
+                    </div>
+
                     {/* Badges */}
-                    <div className="d-flex justify-content-between align-items-start mb-2">
-                      <span className="badge bg-primary">{product.category}</span>
-                      
-                      {/* Indicador de Stock */}
+                    <div className="product-badges">
+                      <span className="badge-category">
+                        {CATEGORIES.find(c => c.id === product.category)?.name}
+                      </span>
                       {product.stock < 10 && product.stock > 0 && (
-                        <span className="badge bg-warning text-dark">
-                          <i className="fas fa-exclamation-triangle me-1"></i>
-                          Últimas {product.stock}
+                        <span className="badge-stock warning">
+                          ¡Últimas {product.stock}!
                         </span>
                       )}
-                      
                       {product.stock === 0 && (
-                        <span className="badge bg-danger">
-                          <i className="fas fa-times-circle me-1"></i>
+                        <span className="badge-stock danger">
                           Agotado
                         </span>
                       )}
                     </div>
+                  </div>
 
-                    <h5 className="mb-2">{product.name}</h5>
+                  {/* Product Info */}
+                  <div className="product-info-modern">
+                    <h3 className="product-name-modern">{product.name}</h3>
+                    <p className="product-description-modern">{product.description}</p>
                     
-                    <p 
-                      className="text-muted small mb-3" 
-                      style={{
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden'
-                      }}
-                      title={product.description}
-                    >
-                      {product.description}
-                    </p>
-                    
-                    <h4 className="text-primary mb-3">
-                      S/ {parseFloat(product.price).toFixed(2)}
-                    </h4>
-                    
-                    <button 
-                      className="btn-add-cart"
-                      onClick={() => handleAddToCart(product.id)}
-                      disabled={addingToCart[product.id] || product.stock === 0}
-                    >
-                      {addingToCart[product.id] ? (
-                        <>
-                          <span className="spinner-border spinner-border-sm me-2"></span>
-                          Agregando...
-                        </>
-                      ) : product.stock === 0 ? (
-                        <>
-                          <i className="fas fa-times-circle me-2"></i>
-                          Agotado
-                        </>
-                      ) : (
-                        <>
-                          <i className="fas fa-cart-plus me-2"></i>
-                          Agregar al Carrito
-                        </>
-                      )}
-                    </button>
+                    <div className="product-footer-modern">
+                      <div className="product-price-modern">
+                        <span className="price-label">Desde</span>
+                        <span className="price-amount">
+                          S/ {parseFloat(product.price).toFixed(2)}
+                        </span>
+                      </div>
+                      
+                      <button 
+                        className={`btn-add-modern ${product.stock === 0 ? 'disabled' : ''}`}
+                        onClick={(e) => handleAddToCart(product.id, e)}
+                        disabled={addingToCart[product.id] || product.stock === 0}
+                      >
+                        {addingToCart[product.id] ? (
+                          <span className="spinner-border spinner-border-sm"></span>
+                        ) : product.stock === 0 ? (
+                          <i className="fas fa-times"></i>
+                        ) : (
+                          <i className="fas fa-cart-plus"></i>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Product Detail Modal */}
+      {showModal && selectedProduct && (
+        <div className={`product-modal-overlay ${showModal ? 'show' : ''}`} onClick={closeModal}>
+          <div className="product-modal-container" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close-btn" onClick={closeModal}>
+              <i className="fas fa-times"></i>
+            </button>
+
+            <div className="modal-content-grid">
+              {/* Image Gallery */}
+              <div className="modal-image-section">
+                <div className="modal-main-image">
+                  <img 
+                    src={selectedProduct.image 
+                      ? `/images/products/${selectedProduct.image}` 
+                      : "https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=800"
+                    }
+                    alt={selectedProduct.name}
+                    onError={(e) => {
+                      e.target.src = "https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=800";
+                    }}
+                  />
+                </div>
+                
+                {/* Thumbnail Gallery - Simulado */}
+                <div className="modal-thumbnails">
+                  {[1, 2, 3].map((_, index) => (
+                    <div key={index} className="thumbnail-item">
+                      <img 
+                        src={selectedProduct.image 
+                          ? `/images/products/${selectedProduct.image}` 
+                          : `https://images.unsplash.com/photo-149075096786${index}-88aa4486c946?w=200`
+                        }
+                        alt={`Vista ${index + 1}`}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Product Details */}
+              <div className="modal-details-section">
+                <div className="modal-header-info">
+                  <span className="modal-category-badge">
+                    {CATEGORIES.find(c => c.id === selectedProduct.category)?.name}
+                  </span>
+                  <h2 className="modal-product-title">{selectedProduct.name}</h2>
+                </div>
+
+                <div className="modal-price-section">
+                  <div className="modal-price-main">
+                    S/ {parseFloat(selectedProduct.price).toFixed(2)}
+                  </div>
+                  <div className="modal-stock-info">
+                    {selectedProduct.stock > 10 ? (
+                      <span className="stock-available">
+                        <i className="fas fa-check-circle"></i> En Stock
+                      </span>
+                    ) : selectedProduct.stock > 0 ? (
+                      <span className="stock-low">
+                        <i className="fas fa-exclamation-circle"></i> Últimas {selectedProduct.stock} unidades
+                      </span>
+                    ) : (
+                      <span className="stock-out">
+                        <i className="fas fa-times-circle"></i> Agotado
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="modal-description">
+                  <h3>Descripción</h3>
+                  <p>{selectedProduct.description}</p>
+                </div>
+
+                <div className="modal-features">
+                  <h3>Características</h3>
+                  <ul>
+                    <li><i className="fas fa-flower"></i> Flores frescas de temporada</li>
+                    <li><i className="fas fa-leaf"></i> Follaje natural seleccionado</li>
+                    <li><i className="fas fa-truck"></i> Entrega el mismo día disponible</li>
+                    <li><i className="fas fa-gift"></i> Incluye tarjeta personalizada</li>
+                  </ul>
+                </div>
+
+                <div className="modal-actions">
+                  <button 
+                    className="btn-add-to-cart-modal"
+                    onClick={(e) => {
+                      handleAddToCart(selectedProduct.id, e);
+                      if (user) closeModal();
+                    }}
+                    disabled={addingToCart[selectedProduct.id] || selectedProduct.stock === 0}
+                  >
+                    {addingToCart[selectedProduct.id] ? (
+                      <>
+                        <span className="spinner-border spinner-border-sm me-2"></span>
+                        Agregando...
+                      </>
+                    ) : selectedProduct.stock === 0 ? (
+                      <>
+                        <i className="fas fa-times-circle me-2"></i>
+                        Agotado
+                      </>
+                    ) : (
+                      <>
+                        <i className="fas fa-cart-plus me-2"></i>
+                        Agregar al Carrito
+                      </>
+                    )}
+                  </button>
+                  
+                  <a 
+                    href="https://wa.me/51943123456" 
+                    className="btn-whatsapp-modal"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <i className="fab fa-whatsapp me-2"></i>
+                    Consultar por WhatsApp
+                  </a>
+                </div>
+
+                <div className="modal-info-cards">
+                  <div className="info-card-mini">
+                    <i className="fas fa-shield-alt"></i>
+                    <div>
+                      <strong>Garantía de Frescura</strong>
+                      <span>7 días</span>
+                    </div>
+                  </div>
+                  <div className="info-card-mini">
+                    <i className="fas fa-sync-alt"></i>
+                    <div>
+                      <strong>Cambios</strong>
+                      <span>24 horas</span>
+                    </div>
                   </div>
                 </div>
               </div>
-            ))
-          )}
+            </div>
+          </div>
         </div>
-      </div>
-    </section>
+      )}
+    </>
   );
 };
 
