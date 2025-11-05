@@ -1,8 +1,5 @@
 import { useState } from 'react';
-// import { ToastContainer } from 'react-toastify'; // <-- YA NO SE IMPORTA AQUÍ
-// import { AppProvider } from './context/AppContext'; // <-- YA NO SE IMPORTA AQUÍ
 
-// Componentes
 import Header from './components/Header';
 import Hero from './components/Hero';
 import Services from './components/Services';
@@ -33,55 +30,50 @@ function App() {
   };
 
   return (
-    // <AppProvider> <-- ESTO SE QUITA
-      <div className="App">
-        <Header 
-          onShowAuth={() => setShowAuthModal(true)}
-          onShowCart={() => setShowCartModal(true)}
-          onShowOrders={() => setShowOrdersModal(true)}
-        />
+    <div className="app-shell">
+      <Header
+        onShowAuth={() => setShowAuthModal(true)}
+        onShowCart={() => setShowCartModal(true)}
+        onShowOrders={() => setShowOrdersModal(true)}
+      />
 
-        <main>
-          <Hero />
-          <Services />
-          <Products onShowAuth={() => setShowAuthModal(true)} />
-        </main>
+      <main className="page-content">
+        <Hero />
+        <Services />
+        <Products onShowAuth={() => setShowAuthModal(true)} />
+      </main>
 
-        <Footer />
+      <Footer />
 
-        {/* Modales */}
-        <AuthModal 
-          show={showAuthModal}
-          onHide={() => setShowAuthModal(false)}
-        />
+      <AuthModal
+        show={showAuthModal}
+        onHide={() => setShowAuthModal(false)}
+      />
 
-        <CartModal 
-          show={showCartModal}
-          onHide={() => setShowCartModal(false)}
-          onCheckout={() => setShowCheckoutModal(true)}
-        />
+      <CartModal
+        show={showCartModal}
+        onHide={() => setShowCartModal(false)}
+        onCheckout={() => setShowCheckoutModal(true)}
+      />
 
-        <CheckoutModal 
-          show={showCheckoutModal}
-          onHide={() => setShowCheckoutModal(false)}
-          onOrderCreated={handleOrderCreated}
-        />
+      <CheckoutModal
+        show={showCheckoutModal}
+        onHide={() => setShowCheckoutModal(false)}
+        onOrderCreated={handleOrderCreated}
+      />
 
-        <PaymentModal 
-          show={showPaymentModal}
-          onHide={() => setShowPaymentModal(false)}
-          orderId={currentOrderId}
-          total={currentOrderTotal}
-        />
+      <PaymentModal
+        show={showPaymentModal}
+        onHide={() => setShowPaymentModal(false)}
+        orderId={currentOrderId}
+        total={currentOrderTotal}
+      />
 
-        <OrdersModal 
-          show={showOrdersModal}
-          onHide={() => setShowOrdersModal(false)}
-        />
-
-        {/* <ToastContainer /> <-- ESTO SE QUITA DE AQUÍ */}
-      </div>
-    // </AppProvider> <-- ESTO SE QUITA
+      <OrdersModal
+        show={showOrdersModal}
+        onHide={() => setShowOrdersModal(false)}
+      />
+    </div>
   );
 }
 
