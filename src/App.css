@@ -1,42 +1,315 @@
-#root {
-  max-width: 1280px;
+:root {
+  color-scheme: light;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #172026;
+  background-color: #f7f8fb;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: linear-gradient(145deg, #f7f8fb 0%, #eef2ff 100%);
+}
+
+.app {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  min-height: 100vh;
+  max-width: 1440px;
   margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 30px 80px rgba(82, 105, 159, 0.15);
+  border-radius: 32px;
+  overflow: hidden;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+.app-sidebar {
+  padding: 48px 32px;
+  background: linear-gradient(180deg, #3f51b5 0%, #5b6ef5 100%);
+  color: #f5f7ff;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
+.app-title {
+  font-size: 2rem;
+  font-weight: 700;
+  margin: 0 0 12px;
+}
+
+.app-subtitle {
+  margin: 0;
+  color: rgba(245, 247, 255, 0.82);
+  font-size: 0.98rem;
+}
+
+.app-stats span {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(245, 247, 255, 0.75);
+}
+
+.app-stats strong {
+  font-size: 1.8rem;
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.sidebar-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sidebar-actions button {
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  border-radius: 14px;
+  padding: 14px 18px;
+  font-size: 0.95rem;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.primary-action {
+  background: #ffffff;
+  color: #3949ab;
+  box-shadow: 0 12px 25px rgba(0, 0, 0, 0.12);
+}
+
+.primary-action:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 18px 30px rgba(0, 0, 0, 0.16);
+}
+
+.ghost-action {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+.ghost-action:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.sidebar-hint {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  padding: 18px 20px;
+}
+
+.sidebar-hint h2 {
+  margin: 0 0 12px;
+  font-size: 1rem;
+  color: #ffffff;
+}
+
+.sidebar-hint ul {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: rgba(245, 247, 255, 0.85);
+  font-size: 0.9rem;
+}
+
+.sidebar-hint kbd {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #1f2a6b;
+}
+
+.app-main {
+  padding: 48px 60px;
+  background: rgba(255, 255, 255, 0.65);
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.outline-header {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.search-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 260px;
+}
+
+.search-box label {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #5c6c86;
+}
+
+.search-box input {
+  border-radius: 14px;
+  border: 1px solid rgba(92, 108, 134, 0.25);
+  padding: 12px 16px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.search-box input:focus {
+  outline: none;
+  border-color: #5b6ef5;
+  box-shadow: 0 0 0 3px rgba(91, 110, 245, 0.18);
+}
+
+.outline-root,
+.outline-children {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.outline-item {
+  margin-bottom: 6px;
+}
+
+.outline-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+  position: relative;
+}
+
+.outline-row:hover {
+  background: rgba(91, 110, 245, 0.06);
+}
+
+.outline-row--selected {
+  background: rgba(91, 110, 245, 0.15);
+  box-shadow: inset 0 0 0 1px rgba(91, 110, 245, 0.45);
+}
+
+.outline-row--matched {
+  box-shadow: inset 0 0 0 2px rgba(33, 150, 243, 0.35);
+}
+
+.outline-toggle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid rgba(92, 108, 134, 0.25);
+  background: #ffffff;
+  color: #3f51b5;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.outline-toggle:hover {
+  transform: scale(1.05);
+  box-shadow: 0 8px 16px rgba(63, 81, 181, 0.15);
+}
+
+.outline-content {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.outline-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font-size: 1rem;
+  font-family: inherit;
+  color: #1f2a44;
+  padding: 8px 10px;
+  border-radius: 10px;
+}
+
+.outline-input:focus {
+  outline: none;
+  background: rgba(63, 81, 181, 0.08);
+}
+
+.outline-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.outline-actions button {
+  border: none;
+  background: rgba(63, 81, 181, 0.08);
+  color: #3f51b5;
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.outline-actions button:hover {
+  background: rgba(63, 81, 181, 0.15);
+  transform: translateY(-1px);
+}
+
+.outline-children {
+  margin-left: 40px;
+  padding-left: 0;
+  border-left: 2px dotted rgba(63, 81, 181, 0.15);
+  margin-top: 4px;
+}
+
+@media (max-width: 1024px) {
+  .app {
+    grid-template-columns: 1fr;
+    border-radius: 0;
   }
-  to {
-    transform: rotate(360deg);
+
+  .app-sidebar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
   }
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
+@media (max-width: 768px) {
+  .app-sidebar {
+    padding: 32px 20px;
   }
-}
 
-.card {
-  padding: 2em;
-}
+  .app-main {
+    padding: 32px 20px;
+  }
 
-.read-the-docs {
-  color: #888;
+  .outline-row {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+
+  .outline-actions {
+    grid-column: span 2;
+    justify-content: flex-end;
+    padding-left: 44px;
+  }
 }
