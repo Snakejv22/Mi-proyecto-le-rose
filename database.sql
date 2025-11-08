@@ -81,8 +81,19 @@ INSERT INTO products (name, description, price, image, category, stock) VALUES
 ('Arreglo Corporativo', 'Imponente arreglo floral para oficinas y eventos empresariales', 250.00, 'corporativo.jpg', 'premium', 10),
 ('Ramo de Gerberas', 'Vibrante ramo de 12 gerberas multicolor', 85.00, 'gerberas.jpg', 'ramos', 45);
 
+-- Tabla de suscriptores al newsletter
+CREATE TABLE newsletter_subscribers (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    subscription_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Índices para mejorar rendimiento
 CREATE INDEX idx_user_email ON users(email);
 CREATE INDEX idx_cart_user ON cart(user_id);
 CREATE INDEX idx_orders_user ON orders(user_id);
 CREATE INDEX idx_orders_status ON orders(status);
+CREATE INDEX idx_newsletter_email ON newsletter_subscribers(email);
+CREATE INDEX idx_newsletter_active ON newsletter_subscribers(is_active);

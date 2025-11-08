@@ -175,28 +175,9 @@ const Header = ({ onShowAuth, onShowCart, onShowOrders }) => {
             </li>
 
             {/* Contact Phone */}
-            <li className="nav-item d-none d-xl-block ms-3">
-              <a 
-                className="btn btn-sm btn-outline-custom" 
-                href={`tel:${APP_CONFIG.contact.phone.replace(/\s+/g, '')}`}
-              >
-                <i className="fas fa-phone-alt me-2"></i>
-                {APP_CONFIG.contact.phone}
-              </a>
-            </li>
+            {/* Contact Phone - removed */}
 
-            {/* WhatsApp Mobile */}
-            <li className="nav-item d-lg-none mt-3">
-              <a 
-                className="btn btn-success w-100" 
-                href={APP_CONFIG.social.whatsapp}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <i className="fab fa-whatsapp me-2"></i>
-                Contactar por WhatsApp
-              </a>
-            </li>
+            
           </ul>
         </div>
       </div>

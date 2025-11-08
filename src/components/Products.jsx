@@ -1,11 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import { useApp } from '../context/AppContext';
 import { API_URL, CATEGORIES } from '../config';
-
-// 🚀 Importación del archivo CSS externo
-import './Products.css'; 
+import './Products.css';
 
 const Products = ({ onShowAuth }) => {
   const { user, addToCart } = useApp();
@@ -17,6 +15,10 @@ const Products = ({ onShowAuth }) => {
   const [addingToCart, setAddingToCart] = useState({});
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const carouselRef = useRef(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [startX, setStartX] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
 
   useEffect(() => {
     loadProducts();
@@ -75,6 +77,40 @@ const Products = ({ onShowAuth }) => {
     setTimeout(() => setSelectedProduct(null), 300);
   };
 
+  // Carousel Navigation
+  const scroll = (direction) => {
+    if (carouselRef.current) {
+      const scrollAmount = carouselRef.current.offsetWidth * 0.8;
+      const newScrollLeft = direction === 'left' 
+        ? carouselRef.current.scrollLeft - scrollAmount
+        : carouselRef.current.scrollLeft + scrollAmount;
+      
+      carouselRef.current.scrollTo({
+        left: newScrollLeft,
+        behavior: 'smooth'
+      });
+    }
+  };
+
+  // Touch/Mouse Drag
+  const handleMouseDown = (e) => {
+    setIsDragging(true);
+    setStartX(e.pageX - carouselRef.current.offsetLeft);
+    setScrollLeft(carouselRef.current.scrollLeft);
+  };
+
+  const handleMouseMove = (e) => {
+    if (!isDragging) return;
+    e.preventDefault();
+    const x = e.pageX - carouselRef.current.offsetLeft;
+    const walk = (x - startX) * 2;
+    carouselRef.current.scrollLeft = scrollLeft - walk;
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
   if (loading) {
     return (
       <section id="products" className="products-section">
@@ -87,10 +123,13 @@ const Products = ({ onShowAuth }) => {
     );
   }
 
+  // Get selected category name for display
+  const selectedCategoryName = CATEGORIES.find(cat => cat.id === selectedCategory)?.name || 'Todos';
+
   return (
     <>
       <section id="products" className="products-section">
-        <div className="container">
+        <div className="container-fluid px-3 px-lg-5">
           {/* Header */}
           <div className="section-header text-center mb-5">
             <span className="section-eyebrow">Nuestra Colección</span>
@@ -100,47 +139,50 @@ const Products = ({ onShowAuth }) => {
             </p>
           </div>
 
-          {/* Search Bar */}
-          <div className="search-bar-container mb-4">
-            <div className="search-bar">
-              <i className="fas fa-search search-icon"></i>
-              <input 
-                type="text"
-                className="search-input"
-                placeholder="Buscar flores, ramos, arreglos..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-              {searchTerm && (
-                <button 
-                  className="search-clear"
-                  onClick={() => setSearchTerm('')}
-                >
-                  <i className="fas fa-times"></i>
-                </button>
-              )}
+          {/* Search & Filters */}
+          <div className="row mb-5">
+            <div className="col-lg-8 mx-auto">
+              {/* Search Bar */}
+              <div className="search-bar-container mb-4">
+                <div className="search-bar">
+                  <i className="fas fa-search search-icon"></i>
+                  <input 
+                    type="text"
+                    className="search-input"
+                    placeholder="Buscar flores, ramos, arreglos..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                  {searchTerm && (
+                    <button 
+                      className="search-clear"
+                      onClick={() => setSearchTerm('')}
+                    >
+                      <i className="fas fa-times"></i>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Category Filters */}
+              <div className="category-filters">
+                {CATEGORIES.map(cat => (
+                  <button
+                    key={cat.id}
+                    className={`category-chip ${selectedCategory === cat.id ? 'active' : ''}`}
+                    onClick={() => setSelectedCategory(cat.id)}
+                  >
+                    {cat.name}
+                    {selectedCategory === cat.id && filteredProducts.length > 0 && (
+                      <span className="chip-count">{filteredProducts.length}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* Category Filters */}
-          <div className="category-filters mb-5">
-            {CATEGORIES.map(cat => (
-              <button
-                key={cat.id}
-                className={`category-chip ${selectedCategory === cat.id ? 'active' : ''}`}
-                onClick={() => setSelectedCategory(cat.id)}
-              >
-                {cat.name}
-                {selectedCategory === cat.id && (
-                  <span className="chip-count">
-                    {filteredProducts.length}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-
-          {/* Products Grid */}
+          {/* Empty State */}
           {filteredProducts.length === 0 ? (
             <div className="empty-state">
               <i className="fas fa-search"></i>
@@ -155,90 +197,126 @@ const Products = ({ onShowAuth }) => {
               )}
             </div>
           ) : (
-            <div className="products-grid">
-              {filteredProducts.map((product) => (
-                <div 
-                  key={product.id} 
-                  className="product-card-modern"
-                  onClick={() => handleViewDetails(product)}
-                >
-                  {/* Image Container */}
-                  <div className="product-image-container">
-                    <img 
-                      src={product.image 
-                        ? `/images/products/${product.image}` 
-                        : "https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=800"
+            <>
+              {/* Single Product Carousel */}
+              <div className="carousel-section mb-5">
+                <div className="carousel-header">
+                  <div>
+                    <h3 className="carousel-title">
+                      <i className="fas fa-flower me-2"></i>
+                      {searchTerm 
+                        ? `Resultados de búsqueda: "${searchTerm}"`
+                        : selectedCategoryName === 'Todos'
+                        ? 'Todos los Productos'
+                        : selectedCategoryName
                       }
-                      alt={product.name}
-                      className="product-image-modern"
-                      onError={(e) => {
-                        e.target.src = "https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=800";
-                      }}
-                    />
-                    
-                    {/* Overlay Actions */}
-                    <div className="product-overlay">
-                      <button 
-                        className="btn-quick-view"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleViewDetails(product);
-                        }}
-                      >
-                        <i className="fas fa-eye"></i>
-                        Ver Detalles
-                      </button>
-                    </div>
-
-                    {/* Badges */}
-                    <div className="product-badges">
-                      <span className="badge-category">
-                        {CATEGORIES.find(c => c.id === product.category)?.name}
-                      </span>
-                      {product.stock < 10 && product.stock > 0 && (
-                        <span className="badge-stock warning">
-                          ¡Últimas {product.stock}!
-                        </span>
-                      )}
-                      {product.stock === 0 && (
-                        <span className="badge-stock danger">
-                          Agotado
-                        </span>
-                      )}
-                    </div>
+                    </h3>
+                    <p className="carousel-subtitle">
+                      {filteredProducts.length} producto{filteredProducts.length !== 1 ? 's' : ''} disponible{filteredProducts.length !== 1 ? 's' : ''}
+                    </p>
                   </div>
-
-                  {/* Product Info */}
-                  <div className="product-info-modern">
-                    <h3 className="product-name-modern">{product.name}</h3>
-                    <p className="product-description-modern">{product.description}</p>
-                    
-                    <div className="product-footer-modern">
-                      <div className="product-price-modern">
-                        <span className="price-label">Desde</span>
-                        <span className="price-amount">
-                          S/ {parseFloat(product.price).toFixed(2)}
-                        </span>
-                      </div>
-                      
-                      <button 
-                        className={`btn-add-modern ${product.stock === 0 ? 'disabled' : ''}`}
-                        onClick={(e) => handleAddToCart(product.id, e)}
-                        disabled={addingToCart[product.id] || product.stock === 0}
-                      >
-                        {addingToCart[product.id] ? (
-                          <span className="spinner-border spinner-border-sm"></span>
-                        ) : product.stock === 0 ? (
-                          <i className="fas fa-times"></i>
-                        ) : (
-                          <i className="fas fa-cart-plus"></i>
-                        )}
-                      </button>
-                    </div>
+                  <div className="carousel-nav-buttons d-none d-md-flex">
+                    <button 
+                      className="carousel-nav-btn prev"
+                      onClick={() => scroll('left')}
+                      aria-label="Anterior"
+                    >
+                      <i className="fas fa-chevron-left"></i>
+                    </button>
+                    <button 
+                      className="carousel-nav-btn next"
+                      onClick={() => scroll('right')}
+                      aria-label="Siguiente"
+                    >
+                      <i className="fas fa-chevron-right"></i>
+                    </button>
                   </div>
                 </div>
-              ))}
-            </div>
+
+                <div 
+                  className="products-carousel"
+                  ref={carouselRef}
+                  onMouseDown={handleMouseDown}
+                  onMouseMove={handleMouseMove}
+                  onMouseUp={handleMouseUp}
+                  onMouseLeave={handleMouseUp}
+                >
+                  {filteredProducts.map((product) => (
+                    <div 
+                      key={product.id} 
+                      className="carousel-card"
+                      onClick={() => handleViewDetails(product)}
+                    >
+                      {/* Image */}
+                      <div className="carousel-card-image">
+                        <img 
+                          src={product.image 
+                            ? `/images/products/${product.image}` 
+                            : "https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=600"
+                          }
+                          alt={product.name}
+                          onError={(e) => {
+                            e.target.src = "https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=600";
+                          }}
+                        />
+                        
+                        {/* Quick View Overlay */}
+                        <div className="carousel-card-overlay">
+                          <button className="btn-quick-view-mini">
+                            <i className="fas fa-eye"></i>
+                          </button>
+                        </div>
+
+                        {/* Stock Badge */}
+                        {product.stock < 10 && product.stock > 0 && (
+                          <span className="stock-badge warning">
+                            ¡Solo {product.stock}!
+                          </span>
+                        )}
+                        {product.stock === 0 && (
+                          <span className="stock-badge danger">
+                            Agotado
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Info */}
+                      <div className="carousel-card-body">
+                        <h4 className="carousel-card-title">{product.name}</h4>
+                        <p className="carousel-card-description">{product.description}</p>
+                        
+                        <div className="carousel-card-footer">
+                          <div className="carousel-card-price">
+                            <span className="price-label">Desde</span>
+                            <span className="price-value">S/ {parseFloat(product.price).toFixed(2)}</span>
+                          </div>
+                          
+                          <button 
+                            className={`btn-add-carousel ${product.stock === 0 ? 'disabled' : ''}`}
+                            onClick={(e) => handleAddToCart(product.id, e)}
+                            disabled={addingToCart[product.id] || product.stock === 0}
+                          >
+                            {addingToCart[product.id] ? (
+                              <span className="spinner-border spinner-border-sm"></span>
+                            ) : product.stock === 0 ? (
+                              <i className="fas fa-times"></i>
+                            ) : (
+                              <i className="fas fa-cart-plus"></i>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Mobile Scroll Indicator */}
+                <div className="scroll-indicator d-md-none">
+                  <i className="fas fa-hand-point-right"></i>
+                  <span>Desliza para ver más</span>
+                </div>
+              </div>
+            </>
           )}
         </div>
       </section>
@@ -267,7 +345,6 @@ const Products = ({ onShowAuth }) => {
                   />
                 </div>
                 
-                {/* Thumbnail Gallery - Simulado */}
                 <div className="modal-thumbnails">
                   {[1, 2, 3].map((_, index) => (
                     <div key={index} className="thumbnail-item">
@@ -362,7 +439,7 @@ const Products = ({ onShowAuth }) => {
                     rel="noopener noreferrer"
                   >
                     <i className="fab fa-whatsapp me-2"></i>
-                    Consultar por WhatsApp
+                    Consultar
                   </a>
                 </div>
 
@@ -370,7 +447,7 @@ const Products = ({ onShowAuth }) => {
                   <div className="info-card-mini">
                     <i className="fas fa-shield-alt"></i>
                     <div>
-                      <strong>Garantía de Frescura</strong>
+                      <strong>Garantía</strong>
                       <span>7 días</span>
                     </div>
                   </div>
