@@ -4,6 +4,7 @@ import Header from './components/Header';
 import Hero from './components/Hero';
 import Services from './components/Services';
 import Products from './components/Products';
+import Newsletter from './components/Newsletter';
 import Footer from './components/Footer';
 
 // Modales
@@ -41,6 +42,7 @@ function App() {
         <Hero />
         <Services />
         <Products onShowAuth={() => setShowAuthModal(true)} />
+        <Newsletter />
       </main>
 
       <Footer />
